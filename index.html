@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Nihongo Ascension: Cloud Protocol</title>
+    <title>Nihongo Ascension: Secure Protocol</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
@@ -57,6 +57,9 @@
         .checkbox-disabled { opacity: 0.3; cursor: not-allowed; pointer-events: none; }
 
         .burnout-mode { filter: grayscale(0.8) sepia(0.2); }
+        
+        /* Auth UI transitions */
+        .hidden-auth { display: none; }
     </style>
 </head>
 <body class="h-screen overflow-hidden flex flex-col md:flex-row" id="main-body">
@@ -68,15 +71,19 @@
         <div class="p-6 border-b border-slate-800/50 relative">
             <div class="flex items-center justify-between mb-4">
                 <div class="flex items-center gap-3">
-                    <div class="relative w-12 h-12 rounded bg-indigo-600 border border-indigo-400 shadow-[0_0_10px_rgba(99,102,241,0.5)] overflow-hidden flex items-center justify-center">
-                        <span id="user-avatar" class="z-0 font-bold text-xl text-white">私</span>
+                    <!-- Avatar Container -->
+                    <div class="relative w-12 h-12 rounded-full bg-indigo-600 border border-indigo-400 shadow-[0_0_10px_rgba(99,102,241,0.5)] overflow-hidden flex items-center justify-center group">
+                        <!-- Default Avatar or Google Photo -->
+                        <img id="auth-user-photo" src="" alt="User" class="w-full h-full object-cover hidden">
+                        <span id="user-avatar-text" class="z-0 font-bold text-xl text-white">私</span>
                         <div id="burnout-overlay" class="absolute inset-0 bg-red-600/0 z-10 transition-colors duration-500 mix-blend-multiply"></div>
                     </div>
                     <div>
-                        <h1 class="text-lg font-bold text-white tracking-wide">Ronin</h1>
+                        <h1 class="text-lg font-bold text-white tracking-wide" id="auth-user-name">Ronin</h1>
                         <p class="text-slate-400 text-xs font-mono" id="current-rank-title">Nivel 1</p>
                     </div>
                 </div>
+                <!-- Streak -->
                 <div class="text-center group cursor-help">
                     <div class="text-2xl relative inline-block">
                         <i class="fas fa-fire text-slate-700 transition-colors duration-300" id="streak-icon"></i>
@@ -166,11 +173,20 @@
                 <div id="shop-container" class="space-y-2"></div>
             </div>
 
-            <!-- CLOUD SYNC AREA -->
+            <!-- CLOUD SYNC AREA (SECURE AUTH) -->
             <div class="mt-8 pb-6">
-                <h3 class="text-slate-500 text-[10px] font-bold uppercase tracking-widest mb-3">Nube (Firebase)</h3>
-                <div class="space-y-2">
-                    <input type="text" id="cloud-id-input" placeholder="Crea un ID Secreto (ej: Ronin99)" class="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-xs text-white placeholder-slate-500 focus:border-indigo-500 focus:outline-none">
+                <h3 class="text-slate-500 text-[10px] font-bold uppercase tracking-widest mb-3">Sincronización Segura</h3>
+                
+                <!-- Estado: NO LOGUEADO -->
+                <div id="auth-login-container">
+                    <button onclick="window.loginGoogle()" class="w-full bg-white text-slate-900 font-bold py-2 rounded flex items-center justify-center gap-2 hover:bg-slate-200 transition">
+                        <i class="fab fa-google text-red-500"></i> Iniciar con Google
+                    </button>
+                    <p class="text-[8px] text-slate-600 mt-2 text-center">Tus datos se guardarán en tu cuenta personal.</p>
+                </div>
+
+                <!-- Estado: LOGUEADO -->
+                <div id="auth-loggedin-container" class="hidden-auth space-y-2">
                     <div class="flex gap-2">
                         <button onclick="window.saveToCloud()" class="flex-1 bg-indigo-900/50 text-[10px] text-indigo-300 py-2 rounded hover:bg-indigo-600 hover:text-white transition border border-indigo-900">
                             <i class="fas fa-cloud-upload-alt mr-1"></i> Guardar
@@ -179,9 +195,19 @@
                             <i class="fas fa-cloud-download-alt mr-1"></i> Cargar
                         </button>
                     </div>
-                    <p class="text-[8px] text-slate-600 mt-1 text-center">Usa el mismo ID en todos tus dispositivos para sincronizar.</p>
+                    <button onclick="window.logoutGoogle()" class="w-full text-[10px] text-slate-500 hover:text-red-400 py-1 text-center">
+                        Cerrar Sesión
+                    </button>
                 </div>
             </div>
+            
+            <!-- Manual Backup (Fallback) -->
+            <div class="mt-4 pt-4 border-t border-slate-800/50">
+                <button onclick="exportSave()" class="w-full text-[9px] text-slate-600 hover:text-slate-400 flex items-center justify-center gap-1">
+                    <i class="fas fa-file-code"></i> Copia de seguridad manual (JSON)
+                </button>
+            </div>
+
         </div>
     </aside>
 
@@ -210,8 +236,10 @@
 
     <!-- LOGIC SCRIPT (MODULE) -->
     <script type="module">
+        // Import Firebase SDKs (Including Auth now)
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
         import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+        import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
         // --- CONFIGURACIÓN INYECTADA ---
         const firebaseConfig = {
@@ -225,14 +253,65 @@
         };
         // -------------------------------
 
-        let db;
+        let db, auth, provider;
         try {
             const app = initializeApp(firebaseConfig);
             db = getFirestore(app);
-            console.log("Firebase conectado ✅");
+            auth = getAuth(app);
+            provider = new GoogleAuthProvider();
+            console.log("Firebase & Auth conectados ✅");
         } catch (e) {
             console.error("Firebase error:", e);
         }
+
+        // --- AUTH LOGIC ---
+        window.loginGoogle = async () => {
+            try {
+                await signInWithPopup(auth, provider);
+                // Auth state listener will handle UI update
+            } catch (e) {
+                console.error(e);
+                showToast("Error al iniciar sesión", "error");
+            }
+        };
+
+        window.logoutGoogle = () => {
+            signOut(auth).then(() => showToast("Sesión cerrada", "warning"));
+        };
+
+        // Monitor Auth State
+        onAuthStateChanged(auth, (user) => {
+            const loginDiv = document.getElementById('auth-login-container');
+            const loggedDiv = document.getElementById('auth-loggedin-container');
+            const avatarImg = document.getElementById('auth-user-photo');
+            const avatarText = document.getElementById('user-avatar-text');
+            const userName = document.getElementById('auth-user-name');
+
+            if (user) {
+                // User is signed in
+                loginDiv.classList.add('hidden-auth');
+                loggedDiv.classList.remove('hidden-auth');
+                
+                // Update Profile UI
+                if(user.photoURL) {
+                    avatarImg.src = user.photoURL;
+                    avatarImg.classList.remove('hidden');
+                    avatarText.classList.add('hidden');
+                }
+                userName.innerText = user.displayName || "Ronin";
+                showToast(`Bienvenido, ${user.displayName.split(' ')[0]}`, "success");
+                
+                // Optional: Auto-load? Maybe risky if local progress is newer. Let user decide.
+            } else {
+                // User is signed out
+                loginDiv.classList.remove('hidden-auth');
+                loggedDiv.classList.add('hidden-auth');
+                
+                avatarImg.classList.add('hidden');
+                avatarText.classList.remove('hidden');
+                userName.innerText = "Ronin";
+            }
+        });
 
         // --- GAME ENGINE ---
         let GAME_DATA = {
@@ -260,10 +339,8 @@
         let historyStack = [];
 
         function pushHistory() {
-            // Clone actual state deeply
             const snapshot = JSON.parse(JSON.stringify(GAME_DATA));
             historyStack.push(snapshot);
-            // Limitar stack a 5 pasos
             if (historyStack.length > 5) historyStack.shift();
         }
 
@@ -271,8 +348,7 @@
             if (historyStack.length === 0) return showToast("Nada que deshacer", "warning");
             const previousState = historyStack.pop();
             GAME_DATA = previousState;
-            saveData();
-            renderAll();
+            saveData(); renderAll();
             showToast("Acción deshecha", "warning");
         }
 
@@ -300,29 +376,21 @@
             }
 
             if (today !== lastDate) {
-                // Push history before modifying day state? 
-                // Usually unnecessary on auto-load, but safer not to allow undoing "Time"
                 const d1 = new Date(today);
                 const d2 = new Date(lastDate);
                 const diffTime = Math.abs(d1 - d2);
                 const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-                console.log(`Nuevo día detectado. Diferencia: ${diffDays} días.`);
-
                 if (diffDays === 1) {
-                    if (GAME_DATA.hasStudiedToday) {
-                        showToast("¡Nuevo día! Racha mantenida.", "success");
-                    } else {
-                        handleStreakLoss(1);
-                    }
+                    if (GAME_DATA.hasStudiedToday) showToast("¡Nuevo día! Racha mantenida.", "success");
+                    else handleStreakLoss(1);
                 } else {
                     handleStreakLoss(diffDays);
                 }
 
                 GAME_DATA.hasStudiedToday = false;
                 GAME_DATA.lastPlayedDate = today;
-                saveData();
-                renderAll();
+                saveData(); renderAll();
             }
         }
 
@@ -338,28 +406,23 @@
             }
         }
 
-        // --- ACTIONS (Now with History) ---
+        // --- ACTIONS ---
         window.addAction = function(type) {
-            pushHistory(); // SAVE STATE BEFORE ACTION
-            
+            pushHistory(); 
             let gain = (type === 'anki') ? 150 : 300;
             GAME_DATA.lifetimeXP += gain;
             GAME_DATA.walletXP += gain;
-            
             if (!GAME_DATA.hasStudiedToday) {
                 GAME_DATA.streak++;
                 if (GAME_DATA.hp < 100) GAME_DATA.hp = Math.min(100, GAME_DATA.hp + 2);
             }
-            
             GAME_DATA.hasStudiedToday = true;
             saveData(); renderAll();
             showToast(`+${gain} SP ganados`, 'success');
         }
 
         window.toggleTask = function(milestoneId, taskId) {
-            // Don't push history for locking/unlocking if user wants, but sure, why not.
             pushHistory();
-
             const m = GAME_DATA.milestones.find(m => m.id === milestoneId);
             const t = m.checklist.find(t => t.id === taskId);
             const mIndex = GAME_DATA.milestones.indexOf(m);
@@ -377,18 +440,11 @@
         }
 
         window.buyItem = function(itemId) {
-            pushHistory(); // SAVE STATE
-
+            pushHistory();
             const item = GAME_DATA.shop.find(i => i.id === itemId);
             if (GAME_DATA.walletXP >= item.cost) {
-                if (itemId === 'freeze' && GAME_DATA.inventory.streakFreeze) { 
-                    historyStack.pop(); // Cancel undo save if failed
-                    return showToast("Ya tienes escudo", "error"); 
-                }
-                if (itemId === 'theme_dark' && GAME_DATA.inventory.themeDark) {
-                    historyStack.pop(); 
-                    return showToast("Ya tienes este tema", "error"); 
-                }
+                if (itemId === 'freeze' && GAME_DATA.inventory.streakFreeze) { historyStack.pop(); return showToast("Ya tienes escudo", "error"); }
+                if (itemId === 'theme_dark' && GAME_DATA.inventory.themeDark) { historyStack.pop(); return showToast("Ya tienes este tema", "error"); }
                 
                 GAME_DATA.walletXP -= item.cost;
                 if (itemId === 'freeze') GAME_DATA.inventory.streakFreeze = true;
@@ -397,37 +453,54 @@
                 
                 saveData(); renderAll(); showToast(`Compraste: ${item.name}`, 'success');
             } else {
-                historyStack.pop();
-                showToast(`Necesitas ${item.cost} SP`, "error");
+                historyStack.pop(); showToast(`Necesitas ${item.cost} SP`, "error");
             }
         }
 
-        // --- FIREBASE ---
+        // --- SECURE FIREBASE FUNCTIONS ---
         window.saveToCloud = async function() {
-            const cloudID = document.getElementById('cloud-id-input').value.trim();
-            if (!cloudID) return showToast("Escribe un ID secreto", "error");
-            if (!db) return showToast("Error: Firebase no configurado", "error");
+            const user = auth.currentUser;
+            if (!user) return showToast("Debes iniciar sesión", "error");
+            
             try {
-                await setDoc(doc(db, "saves", cloudID), GAME_DATA);
-                showToast("¡Guardado en la nube!", "success");
-            } catch (e) { console.error(e); showToast("Error al guardar", "error"); }
+                // Use the user's unique UID as the document key. Secure.
+                await setDoc(doc(db, "users", user.uid), GAME_DATA);
+                showToast("¡Guardado seguro en la nube!", "success");
+            } catch (e) { console.error(e); showToast("Error al guardar (Revisa permisos)", "error"); }
         }
 
         window.loadFromCloud = async function() {
-            const cloudID = document.getElementById('cloud-id-input').value.trim();
-            if (!cloudID) return showToast("Escribe tu ID secreto", "error");
-            if (!db) return showToast("Error: Firebase no configurado", "error");
+            const user = auth.currentUser;
+            if (!user) return showToast("Debes iniciar sesión", "error");
+
             try {
-                const docRef = doc(db, "saves", cloudID);
+                const docRef = doc(db, "users", user.uid);
                 const docSnap = await getDoc(docRef);
                 if (docSnap.exists()) {
                     GAME_DATA = docSnap.data();
-                    historyStack = []; // Clear history on load
+                    historyStack = [];
                     checkDailyRollover(); 
                     saveData(); renderAll();
-                    showToast("Progreso cargado", "success");
-                } else { showToast("ID no encontrado", "warning"); }
+                    showToast("Progreso cargado de tu cuenta", "success");
+                } else { showToast("No hay datos guardados para este usuario", "warning"); }
             } catch (e) { console.error(e); showToast("Error al cargar", "error"); }
+        }
+
+        // --- MANUAL BACKUP (FALLBACK) ---
+        window.exportSave = function() {
+            const dataStr = JSON.stringify(GAME_DATA);
+            const encoded = btoa(dataStr);
+            navigator.clipboard.writeText(encoded).then(() => showToast("Copiado al portapapeles", "success"))
+            .catch(() => prompt("Copia tu save:", encoded));
+        }
+        
+        window.importSave = function() {
+            const input = prompt("Pega tu código:");
+            if(!input) return;
+            try {
+                GAME_DATA = JSON.parse(atob(input));
+                saveData(); renderAll(); showToast("Cargado manual", "success");
+            } catch(e) { showToast("Código inválido", "error"); }
         }
 
         // --- UTILS ---
@@ -532,7 +605,7 @@
         }
 
         loadData();
-        checkDailyRollover(); // Verify date on load
+        checkDailyRollover(); 
         renderAll();
     </script>
 </body>
