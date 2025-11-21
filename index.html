@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nihongo Ascension: Cloud Protocol</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;500;700;900&family=Zen+Maru+Gothic:wght@500;700;900&display=swap');
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: #020617;
+            color: #e2e8f0;
+            transition: background-color 0.5s ease;
+        }
+
+        /* Theme: Void */
+        body.theme-dark { background-color: #000000; }
+        body.theme-dark aside { background-color: #050505; border-color: #333; }
+
+        .font-jp { font-family: 'Zen Maru Gothic', sans-serif; }
+
+        /* --- VFX --- */
+        .boss-card {
+            background: linear-gradient(160deg, #1a0b0b 0%, #2d1212 100%);
+            border: 1px solid #7f1d1d;
+            box-shadow: 0 0 20px rgba(220, 38, 38, 0.2);
+            transition: all 0.3s ease;
+        }
+        .boss-card:hover {
+            transform: scale(1.02);
+            box-shadow: 0 0 30px rgba(220, 38, 38, 0.4);
+            border-color: #ef4444;
+        }
+        .boss-locked { filter: grayscale(1) opacity(0.8); }
+
+        .locked-item { filter: grayscale(1) brightness(0.5); opacity: 0.6; border: 1px dashed #475569; }
+        .unlocked-item {
+            filter: grayscale(0) brightness(1); opacity: 1;
+            border: 1px solid #334155; background: #0f172a;
+            transform: translateY(-2px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+        }
+
+        .fire-anim { animation: burn 0.8s infinite alternate; transform-origin: center bottom; }
+        @keyframes burn {
+            0% { transform: scale(1); filter: drop-shadow(0 0 2px orangered); }
+            100% { transform: scale(1.1); filter: drop-shadow(0 0 5px yellow); }
+        }
+
+        .progress-bar-fill { transition: width 1.5s cubic-bezier(0.4, 0, 0.2, 1); }
+
+        .custom-checkbox:checked + div { background-color: #10b981; border-color: #10b981; }
+        .custom-checkbox:checked + div:after { content: '✓'; color: white; font-size: 10px; display: block; text-align: center; }
+        .checkbox-disabled { opacity: 0.3; cursor: not-allowed; pointer-events: none; }
+
+        .burnout-mode { filter: grayscale(0.8) sepia(0.2); }
+    </style>
+</head>
+<body class="h-screen overflow-hidden flex flex-col md:flex-row" id="main-body">
+
+    <!-- SIDEBAR -->
+    <aside class="w-full md:w-80 bg-[#0B1121] border-r border-slate-800 flex flex-col z-20 shadow-2xl h-full transition-colors duration-500">
+        
+        <!-- Profile -->
+        <div class="p-6 border-b border-slate-800/50 relative">
+            <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center gap-3">
+                    <div class="relative w-12 h-12 rounded bg-indigo-600 border border-indigo-400 shadow-[0_0_10px_rgba(99,102,241,0.5)] overflow-hidden flex items-center justify-center">
+                        <span id="user-avatar" class="z-0 font-bold text-xl text-white">私</span>
+                        <div id="burnout-overlay" class="absolute inset-0 bg-red-600/0 z-10 transition-colors duration-500 mix-blend-multiply"></div>
+                    </div>
+                    <div>
+                        <h1 class="text-lg font-bold text-white tracking-wide">Ronin</h1>
+                        <p class="text-slate-400 text-xs font-mono" id="current-rank-title">Nivel 1</p>
+                    </div>
+                </div>
+                <div class="text-center group cursor-help">
+                    <div class="text-2xl relative inline-block">
+                        <i class="fas fa-fire text-slate-700 transition-colors duration-300" id="streak-icon"></i>
+                        <span class="absolute -top-2 -right-2 bg-red-600 text-white text-[10px] font-bold px-1.5 rounded-full border border-slate-900" id="streak-badge">0</span>
+                    </div>
+                    <div class="text-[10px] text-slate-500 font-bold uppercase mt-1 group-hover:text-orange-400">Racha</div>
+                </div>
+            </div>
+
+            <!-- Stats -->
+            <div class="space-y-3">
+                <div>
+                    <div class="flex justify-between text-xs text-slate-400 mb-1">
+                        <span>Nivel (Progreso)</span>
+                        <span id="xp-fraction">0 / 2,500</span>
+                    </div>
+                    <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+                        <div id="xp-bar" class="progress-bar-fill bg-gradient-to-r from-blue-500 to-indigo-500 h-2 rounded-full" style="width: 0%"></div>
+                    </div>
+                </div>
+                <div>
+                    <div class="flex justify-between text-xs text-slate-400 mb-1">
+                        <span class="text-emerald-400 font-bold"><i class="fas fa-coins mr-1"></i>Cartera SP</span>
+                        <span id="wallet-display" class="text-white font-mono">0 SP</span>
+                    </div>
+                </div>
+                <div class="pt-1">
+                    <div class="flex justify-between text-xs text-slate-400 mb-1">
+                        <span>Motivación (HP)</span>
+                        <span id="hp-display">100%</span>
+                    </div>
+                    <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+                        <div id="hp-bar" class="progress-bar-fill bg-gradient-to-r from-red-500 to-rose-500 h-2 rounded-full" style="width: 100%"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="daily-status" class="mt-4 text-center text-[10px] font-bold uppercase tracking-widest text-slate-600 transition-colors">
+                <i class="fas fa-circle text-[6px] mr-1"></i> Estado: Pendiente
+            </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="p-4 flex-1 overflow-y-auto">
+            <h3 class="text-slate-500 text-[10px] font-bold uppercase tracking-widest mb-3">Grind Diario</h3>
+            
+            <div class="grid grid-cols-1 gap-3">
+                <button onclick="window.addAction('anki')" class="group flex items-center justify-between bg-slate-800/50 hover:bg-blue-900/20 border border-slate-700 hover:border-blue-500 p-3 rounded transition-all">
+                    <div class="flex items-center gap-3">
+                        <i class="fas fa-clone text-blue-400 group-hover:scale-110 transition-transform"></i>
+                        <div class="text-left">
+                            <div class="text-sm font-bold text-slate-300 group-hover:text-white">Anki Review</div>
+                            <div class="text-[10px] text-slate-500">Mantenimiento</div>
+                        </div>
+                    </div>
+                    <span class="text-xs font-mono text-blue-400">+150 SP</span>
+                </button>
+
+                <button onclick="window.addAction('immersion')" class="group flex items-center justify-between bg-slate-800/50 hover:bg-emerald-900/20 border border-slate-700 hover:border-emerald-500 p-3 rounded transition-all">
+                    <div class="flex items-center gap-3">
+                        <i class="fas fa-play text-emerald-400 group-hover:scale-110 transition-transform"></i>
+                        <div class="text-left">
+                            <div class="text-sm font-bold text-slate-300 group-hover:text-white">Inmersión</div>
+                            <div class="text-[10px] text-slate-500">Anime / Novela</div>
+                        </div>
+                    </div>
+                    <span class="text-xs font-mono text-emerald-400">+300 SP</span>
+                </button>
+
+                <!-- Simulators -->
+                <div class="mt-4 pt-4 border-t border-slate-800">
+                    <h3 class="text-slate-600 text-[10px] font-bold uppercase mb-2">Simulador de Tiempo</h3>
+                    <button onclick="window.endDay()" class="w-full text-xs bg-slate-800 text-slate-400 hover:text-white hover:bg-indigo-900/30 py-3 rounded border border-slate-700 transition-all relative overflow-hidden group">
+                        <span class="relative z-10"><i class="fas fa-moon mr-1"></i> Dormir (Terminar Día)</span>
+                        <div class="absolute inset-0 bg-indigo-600/10 transform -translate-x-full group-hover:translate-x-0 transition-transform duration-300"></div>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Shop -->
+            <div class="mt-8 border-b border-slate-800 pb-6">
+                <h3 class="text-slate-500 text-[10px] font-bold uppercase tracking-widest mb-3">Mercado Negro</h3>
+                <div id="shop-container" class="space-y-2"></div>
+            </div>
+
+            <!-- CLOUD SYNC AREA -->
+            <div class="mt-8 pb-6">
+                <h3 class="text-slate-500 text-[10px] font-bold uppercase tracking-widest mb-3">Nube (Firebase)</h3>
+                <div class="space-y-2">
+                    <input type="text" id="cloud-id-input" placeholder="Crea un ID Secreto (ej: Ronin99)" class="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-xs text-white placeholder-slate-500 focus:border-indigo-500 focus:outline-none">
+                    <div class="flex gap-2">
+                        <button onclick="window.saveToCloud()" class="flex-1 bg-indigo-900/50 text-[10px] text-indigo-300 py-2 rounded hover:bg-indigo-600 hover:text-white transition border border-indigo-900">
+                            <i class="fas fa-cloud-upload-alt mr-1"></i> Guardar
+                        </button>
+                        <button onclick="window.loadFromCloud()" class="flex-1 bg-emerald-900/50 text-[10px] text-emerald-300 py-2 rounded hover:bg-emerald-600 hover:text-white transition border border-emerald-900">
+                            <i class="fas fa-cloud-download-alt mr-1"></i> Cargar
+                        </button>
+                    </div>
+                    <p class="text-[8px] text-slate-600 mt-1 text-center">Usa el mismo ID en todos tus dispositivos para sincronizar.</p>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- MAIN ROADMAP -->
+    <main class="flex-1 relative overflow-y-auto custom-scrollbar transition-colors duration-500">
+        <div class="absolute inset-0 opacity-10 pointer-events-none" style="background-image: radial-gradient(#4f46e5 1px, transparent 1px); background-size: 30px 30px;"></div>
+        <div class="relative max-w-5xl mx-auto p-6 md:p-12">
+            <div class="text-center mb-16">
+                <h2 class="text-4xl md:text-5xl font-black text-white mb-2 font-jp tracking-tight">CAMINO A LA <span class="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-400">FLUIDEZ</span></h2>
+                <p class="text-slate-400 max-w-xl mx-auto">Completa los requisitos obligatorios. Sincroniza tu progreso en la nube.</p>
+            </div>
+            <div class="absolute left-6 md:left-1/2 top-40 bottom-20 w-0.5 bg-slate-800 md:-translate-x-1/2 z-0"></div>
+            <div id="roadmap-container" class="space-y-16 relative z-10"></div>
+            <div class="h-20"></div>
+        </div>
+    </main>
+
+    <!-- TOAST -->
+    <div id="toast" class="fixed bottom-8 right-8 max-w-sm bg-slate-900 text-white px-6 py-4 rounded-lg shadow-2xl transform translate-y-32 opacity-0 transition-all duration-500 flex items-center gap-4 border-l-4 border-indigo-500 z-50">
+        <div class="text-2xl" id="toast-icon"><i class="fas fa-info-circle"></i></div>
+        <div>
+            <h4 class="font-bold text-sm uppercase" id="toast-title">Notificación</h4>
+            <p id="toast-message" class="text-xs text-slate-400">Mensaje del sistema.</p>
+        </div>
+    </div>
+
+    <!-- LOGIC SCRIPT (MODULE) -->
+    <script type="module">
+        // Import Firebase SDKs
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+        // --- CONFIGURACIÓN FIREBASE DE USUARIO ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyBx9eIq0_FtWVvhVPiOXnYkaqJRMpxwxDQ",
+            authDomain: "ponjaquest.firebaseapp.com",
+            projectId: "ponjaquest",
+            storageBucket: "ponjaquest.firebasestorage.app",
+            messagingSenderId: "515253701518",
+            appId: "1:515253701518:web:4b59a8bfb9781a5214b2df",
+            measurementId: "G-2JY6H17CDX"
+        };
+        // ----------------------------------------------------
+
+        // Initialize Firebase
+        let db;
+        try {
+            const app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            console.log("Firebase conectado ✅");
+        } catch (e) {
+            console.error("Error conectando Firebase. ¿Pegaste las llaves?", e);
+        }
+
+        // --- GAME ENGINE ---
+        let GAME_DATA = {
+            lifetimeXP: 0, walletXP: 0, streak: 0, hp: 100, hasStudiedToday: false,
+            inventory: { streakFreeze: false, themeDark: false },
+            milestones: [
+                { id: 1, xp_req: 0, title: "El Despertar", subtitle: "Tutorial", desc: "Configura tu entorno.", icon: "fa-seedling", isBoss: false, checklist: [{id:'m1_1', text:"Instalar Anki + Yomitan", done:false}, {id:'m1_2', text:"Aprender Hiragana/Katakana", done:false}] },
+                { id: 2, xp_req: 13500, title: "Supervivencia N5", subtitle: "Mes 1", desc: "Construye los cimientos.", icon: "fa-shield-alt", isBoss: false, checklist: [{id:'m2_1', text:"Terminar Tae Kim", done:false}, {id:'m2_2', text:"Leer 5 caps Satori Reader", done:false}] },
+                { id: 3, xp_req: 85000, title: "El Gran Filtro", subtitle: "GATEKEEPER", desc: "150 días de consistencia.", icon: "fa-torii-gate", isBoss: true, checklist: [{id:'m3_1', text:"COMPLETAR Kaishi 1.5k", done:false}, {id:'m3_2', text:"Ver 'Shirokuma Cafe'", done:false}] },
+                { id: 4, xp_req: 150000, title: "Minero de Datos", subtitle: "Transición", desc: "Minería propia.", icon: "fa-database", isBoss: false, checklist: [{id:'m4_1', text:"Configurar Textractor", done:false}, {id:'m4_2', text:"Leer 'Go! Go! Nippon!'", done:false}] },
+                { id: 5, xp_req: 300000, title: "LA PRUEBA EMOCIONAL", subtitle: "BOSS: CLANNAD", desc: "Tu primera VN monumental.", icon: "fa-heart-broken", isBoss: true, checklist: [{id:'m5_1', text:"Deck Vocab Clannad", done:false}, {id:'m5_2', text:"Completar Ruta Nagisa", done:false}] },
+                { id: 6, xp_req: 600000, title: "Nativo Honorario", subtitle: "Alta Inmersión", desc: "Sin subtítulos.", icon: "fa-dragon", isBoss: false, checklist: [{id:'m6_1', text:"Leer White Album 2", done:false}, {id:'m6_2', text:"Leer 1 Novela de Mishima", done:false}] },
+                { id: 7, xp_req: 1000000, title: "GOD TIER: JLPT N1", subtitle: "Objetivo Final", desc: "La cima.", icon: "fa-crown", isBoss: true, checklist: [{id:'m7_1', text:"Aprobar N1", done:false}, {id:'m7_2', text:"Quemar 10k cartas", done:false}] }
+            ],
+            shop: [
+                { id: 'freeze', name: "Escudo de Racha", desc: "Protege 1 día.", cost: 5000, icon: "fa-snowflake", type: 'consumable' },
+                { id: 'potion', name: "Poción de Motivación", desc: "+30 HP.", cost: 1000, icon: "fa-flask", type: 'consumable' },
+                { id: 'theme_dark', name: "Protocolo VOID", desc: "Modo oscuro.", cost: 20000, icon: "fa-moon", type: 'cosmetic' }
+            ]
+        };
+
+        // Make functions global so HTML buttons can see them
+        window.addAction = function(type) {
+            let gain = (type === 'anki') ? 150 : 300;
+            GAME_DATA.lifetimeXP += gain;
+            GAME_DATA.walletXP += gain;
+            GAME_DATA.hasStudiedToday = true;
+            saveData(); renderAll();
+            showToast(`+${gain} SP ganados`, 'success');
+        }
+
+        window.toggleTask = function(milestoneId, taskId) {
+            const m = GAME_DATA.milestones.find(m => m.id === milestoneId);
+            const t = m.checklist.find(t => t.id === taskId);
+            const mIndex = GAME_DATA.milestones.indexOf(m);
+            const prevUnlocked = mIndex === 0 || isMilestoneUnlocked(GAME_DATA.milestones[mIndex - 1]);
+            const xpMet = GAME_DATA.lifetimeXP >= m.xp_req;
+
+            if (prevUnlocked && xpMet) {
+                t.done = !t.done;
+                saveData(); renderAll();
+                if (isMilestoneUnlocked(m)) showToast(`¡NIVEL ${m.title} COMPLETADO!`, 'levelup');
+            } else {
+                if (!prevUnlocked) showToast("¡Completa el nivel anterior!", "error");
+                else if (!xpMet) showToast("¡Necesitas más XP!", "error");
+            }
+        }
+
+        window.buyItem = function(itemId) {
+            const item = GAME_DATA.shop.find(i => i.id === itemId);
+            if (GAME_DATA.walletXP >= item.cost) {
+                if (itemId === 'freeze' && GAME_DATA.inventory.streakFreeze) return showToast("Ya tienes escudo", "error");
+                if (itemId === 'theme_dark' && GAME_DATA.inventory.themeDark) return showToast("Ya tienes este tema", "error");
+                
+                GAME_DATA.walletXP -= item.cost;
+                if (itemId === 'freeze') GAME_DATA.inventory.streakFreeze = true;
+                if (itemId === 'potion') GAME_DATA.hp = Math.min(100, GAME_DATA.hp + 30);
+                if (itemId === 'theme_dark') GAME_DATA.inventory.themeDark = true;
+                
+                saveData(); renderAll(); showToast(`Compraste: ${item.name}`, 'success');
+            } else {
+                showToast(`Necesitas ${item.cost} SP`, "error");
+            }
+        }
+
+        window.endDay = function() {
+            if (GAME_DATA.hasStudiedToday) {
+                GAME_DATA.streak++;
+                GAME_DATA.hasStudiedToday = false;
+                if (GAME_DATA.hp < 100) GAME_DATA.hp = Math.min(100, GAME_DATA.hp + 2);
+                showToast("Día registrado. +2% HP", "success");
+            } else {
+                if (GAME_DATA.inventory.streakFreeze) {
+                    GAME_DATA.inventory.streakFreeze = false;
+                    GAME_DATA.hasStudiedToday = false;
+                    showToast("¡Escudo usado!", "warning");
+                } else {
+                    GAME_DATA.streak = 0;
+                    GAME_DATA.hp = Math.max(0, GAME_DATA.hp - 20);
+                    GAME_DATA.hasStudiedToday = false;
+                    showToast("¡Racha perdida! -20 HP", "error");
+                }
+            }
+            saveData(); renderAll();
+        }
+
+        // --- FIREBASE CLOUD FUNCTIONS ---
+        window.saveToCloud = async function() {
+            const cloudID = document.getElementById('cloud-id-input').value.trim();
+            if (!cloudID) return showToast("Escribe un ID secreto primero", "error");
+            if (!db) return showToast("Error: Firebase no configurado", "error");
+
+            try {
+                // Save current state to Firestore
+                await setDoc(doc(db, "saves", cloudID), GAME_DATA);
+                showToast("¡Guardado en la nube!", "success");
+            } catch (e) {
+                console.error(e);
+                showToast("Error al guardar (Mira la consola)", "error");
+            }
+        }
+
+        window.loadFromCloud = async function() {
+            const cloudID = document.getElementById('cloud-id-input').value.trim();
+            if (!cloudID) return showToast("Escribe tu ID secreto", "error");
+            if (!db) return showToast("Error: Firebase no configurado", "error");
+
+            try {
+                const docRef = doc(db, "saves", cloudID);
+                const docSnap = await getDoc(docRef);
+
+                if (docSnap.exists()) {
+                    GAME_DATA = docSnap.data();
+                    saveData(); // Save to local storage too
+                    renderAll();
+                    showToast("Progreso cargado de la nube", "success");
+                } else {
+                    showToast("No existe partida con ese ID", "warning");
+                }
+            } catch (e) {
+                console.error(e);
+                showToast("Error al cargar", "error");
+            }
+        }
+
+        // --- UTILS ---
+        function isMilestoneUnlocked(m) {
+            return (GAME_DATA.lifetimeXP >= m.xp_req) && m.checklist.every(t => t.done);
+        }
+
+        function saveData() {
+            localStorage.setItem('nihongo_v5', JSON.stringify(GAME_DATA));
+        }
+
+        function loadData() {
+            const saved = localStorage.getItem('nihongo_v5');
+            // Migration check
+            if(!saved && localStorage.getItem('nihongo_v4')) {
+                // Simple migration from v4
+                let v4 = JSON.parse(localStorage.getItem('nihongo_v4'));
+                GAME_DATA = {...GAME_DATA, ...v4}; 
+                // Re-map checklist state if needed, simplified here
+                return;
+            }
+
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                GAME_DATA = { ...GAME_DATA, ...parsed };
+                // Ensure checklist references are intact
+                if(parsed.milestones) {
+                    parsed.milestones.forEach(pM => {
+                        let realM = GAME_DATA.milestones.find(m => m.id === pM.id);
+                        if(realM) {
+                            pM.checklist.forEach(pT => {
+                                let realT = realM.checklist.find(t => t.id === pT.id);
+                                if(realT) realT.done = pT.done;
+                            });
+                        }
+                    });
+                }
+            }
+        }
+
+        function showToast(msg, type) {
+            const toast = document.getElementById('toast');
+            const title = document.getElementById('toast-title');
+            const body = document.getElementById('toast-message');
+            const icon = document.getElementById('toast-icon');
+            
+            body.innerText = msg;
+            toast.className = "fixed bottom-8 right-8 max-w-sm px-6 py-4 rounded-lg shadow-2xl flex items-center gap-4 border-l-4 z-50 transition-all duration-500 transform";
+            
+            if (type === 'success') { toast.classList.add('bg-slate-900', 'text-white', 'border-emerald-500'); icon.innerHTML = '<i class="fas fa-check text-emerald-400"></i>'; title.innerText = "Éxito"; }
+            else if (type === 'error') { toast.classList.add('bg-slate-900', 'text-white', 'border-red-500'); icon.innerHTML = '<i class="fas fa-times-circle text-red-500"></i>'; title.innerText = "Error"; }
+            else if (type === 'warning') { toast.classList.add('bg-slate-900', 'text-white', 'border-yellow-500'); icon.innerHTML = '<i class="fas fa-shield-alt text-yellow-500"></i>'; title.innerText = "Aviso"; }
+            else if (type === 'levelup') { toast.classList.add('bg-yellow-900', 'text-yellow-100', 'border-yellow-400'); icon.innerHTML = '<i class="fas fa-crown text-yellow-400 animate-bounce"></i>'; title.innerText = "LEVEL UP!"; }
+            
+            toast.classList.remove('translate-y-32', 'opacity-0');
+            setTimeout(() => toast.classList.add('translate-y-32', 'opacity-0'), 3000);
+        }
+
+        function renderAll() {
+            // Sidebar
+            document.getElementById('streak-badge').innerText = GAME_DATA.streak;
+            const fire = document.getElementById('streak-icon');
+            if(GAME_DATA.streak > 3) { fire.classList.add('fire-anim', 'text-orange-500'); fire.classList.remove('text-slate-700'); } 
+            else { fire.classList.remove('fire-anim', 'text-orange-500'); fire.classList.add('text-slate-700'); }
+
+            const statusDiv = document.getElementById('daily-status');
+            if (GAME_DATA.hasStudiedToday) { statusDiv.innerHTML = '<i class="fas fa-check-circle text-emerald-500 mr-1"></i> Completado'; statusDiv.classList.replace('text-slate-600', 'text-emerald-400'); }
+            else { statusDiv.innerHTML = '<i class="fas fa-circle text-slate-600 mr-1"></i> Pendiente'; statusDiv.classList.replace('text-emerald-400', 'text-slate-600'); }
+
+            document.getElementById('wallet-display').innerText = `${GAME_DATA.walletXP.toLocaleString()} SP`;
+            const hpVal = Math.max(0, GAME_DATA.hp);
+            document.getElementById('hp-display').innerText = `${hpVal}%`;
+            document.getElementById('hp-bar').style.width = `${hpVal}%`;
+            if(hpVal < 30) document.getElementById('hp-bar').className = "progress-bar-fill bg-red-600 h-2 rounded-full";
+            else document.getElementById('hp-bar').className = "progress-bar-fill bg-gradient-to-r from-emerald-400 to-green-500 h-2 rounded-full";
+
+            // XP Bar
+            let activeIdx = GAME_DATA.milestones.findIndex(m => !isMilestoneUnlocked(m));
+            if (activeIdx === -1) {
+                document.getElementById('xp-bar').style.width = "100%";
+                document.getElementById('xp-fraction').innerText = "MAX LEVEL";
+                document.getElementById('current-rank-title').innerText = "JLPT N1 God";
+            } else {
+                const m = GAME_DATA.milestones[activeIdx];
+                const prevReq = activeIdx > 0 ? GAME_DATA.milestones[activeIdx - 1].xp_req : 0;
+                const range = m.xp_req - prevReq;
+                const prog = GAME_DATA.lifetimeXP - prevReq;
+                let pct = (range <= 0) ? 100 : (prog / range) * 100;
+                if (GAME_DATA.lifetimeXP >= m.xp_req) { pct = 100; document.getElementById('xp-fraction').innerText = "XP Lista - ¡Checklist!"; }
+                else { document.getElementById('xp-fraction').innerText = `${Math.floor(GAME_DATA.lifetimeXP).toLocaleString()} / ${m.xp_req.toLocaleString()}`; }
+                document.getElementById('xp-bar').style.width = `${Math.min(100, Math.max(0, pct))}%`;
+                document.getElementById('current-rank-title').innerText = activeIdx > 0 ? GAME_DATA.milestones[activeIdx-1].title : "Novato";
+            }
+
+            // Visuals
+            const body = document.getElementById('main-body');
+            const overlay = document.getElementById('burnout-overlay');
+            if (GAME_DATA.hp <= 0) { body.classList.add('burnout-mode'); overlay.classList.remove('bg-red-600/0'); overlay.classList.add('bg-red-600/60'); document.getElementById('hp-display').innerText = "AGOTADO"; }
+            else { body.classList.remove('burnout-mode'); overlay.classList.add('bg-red-600/0'); overlay.classList.remove('bg-red-600/60'); }
+            if (GAME_DATA.inventory.themeDark) body.classList.add('theme-dark'); else body.classList.remove('theme-dark');
+
+            // Shop
+            const shopCont = document.getElementById('shop-container');
+            shopCont.innerHTML = '';
+            GAME_DATA.shop.forEach(item => {
+                const canAfford = GAME_DATA.walletXP >= item.cost;
+                let isOwned = (item.id === 'freeze' && GAME_DATA.inventory.streakFreeze) || (item.id === 'theme_dark' && GAME_DATA.inventory.themeDark);
+                shopCont.innerHTML += `
+                <div class="bg-slate-800 p-2 rounded border border-slate-700 flex justify-between items-center ${canAfford||isOwned?'opacity-100':'opacity-60'}">
+                    <div class="flex items-center gap-2"><div class="text-slate-400 w-5 text-center"><i class="fas ${item.icon}"></i></div><div><div class="text-[10px] font-bold text-white">${item.name}</div><div class="text-[8px] text-slate-500">${item.cost.toLocaleString()} SP</div></div></div>
+                    <button onclick="window.buyItem('${item.id}')" class="text-[9px] px-2 py-1 rounded font-bold transition-colors ${isOwned?'bg-emerald-900 text-emerald-400 cursor-default':(canAfford?'bg-indigo-600 text-white hover:bg-indigo-500':'bg-slate-700 text-slate-500 cursor-not-allowed')}" ${!canAfford||isOwned?'disabled':''}>${isOwned?'COMPRADO':'COMPRAR'}</button>
+                </div>`;
+            });
+
+            // Roadmap
+            const mapCont = document.getElementById('roadmap-container');
+            mapCont.innerHTML = '';
+            GAME_DATA.milestones.forEach((m, idx) => {
+                const unlocked = isMilestoneUnlocked(m);
+                const current = (idx === 0 && !unlocked) || (idx > 0 && isMilestoneUnlocked(GAME_DATA.milestones[idx-1]) && !unlocked);
+                const xpMet = GAME_DATA.lifetimeXP >= m.xp_req;
+                
+                let cardClass = unlocked ? "unlocked-item" : "locked-item";
+                if (m.isBoss) cardClass = unlocked ? "boss-card border-red-500" : "boss-card boss-locked";
+                if (current) cardClass += " border-2 border-yellow-500 shadow-[0_0_25px_rgba(234,179,8,0.2)]";
+                
+                let align = (idx % 2 === 0) ? "md:ml-auto md:pl-12" : "md:mr-auto md:pr-12";
+                if (m.isBoss) align = "md:mx-auto md:w-3/4 md:px-0"; else align += " md:w-5/12";
+
+                const checks = m.checklist.map(t => `
+                    <label class="flex items-center space-x-3 group p-1 rounded transition ${xpMet?'cursor-pointer hover:bg-slate-800/50':'checkbox-disabled'}">
+                        <input type="checkbox" class="hidden custom-checkbox" ${t.done?'checked':''} onchange="window.toggleTask(${m.id}, '${t.id}')">
+                        <div class="w-3 h-3 border border-slate-500 rounded bg-slate-900 transition-colors ${!xpMet?'opacity-30':''}"></div>
+                        <span class="text-[10px] ${t.done?'text-emerald-400 line-through decoration-emerald-500/50':'text-slate-400 group-hover:text-slate-200'} select-none">${t.text}</span>
+                    </label>`).join('');
+
+                mapCont.innerHTML += `
+                <div class="relative flex items-center justify-center w-full">
+                    <div class="absolute left-6 md:left-1/2 transform md:-translate-x-1/2 w-3 h-3 rounded-full ${unlocked?'bg-emerald-500 shadow-[0_0_10px_#10b981]':'bg-slate-800 border border-slate-600'} z-20 transition-all duration-500"></div>
+                    <div class="${align} w-full pl-16 md:pl-0 transition-all duration-500">
+                        <div class="p-5 rounded-xl ${cardClass} relative overflow-hidden group">
+                            ${current?'<div class="absolute top-0 right-0 bg-yellow-500 text-black text-[9px] font-bold px-2 py-1 z-10">OBJETIVO</div>':''}
+                            <div class="flex items-start justify-between mb-3 relative z-10">
+                                <div class="flex items-center gap-3"><div class="text-2xl ${unlocked?(m.isBoss?'text-red-500':'text-emerald-400'):'text-slate-600'}"><i class="fas ${m.icon}"></i></div><div><h3 class="font-bold text-base text-slate-200 ${m.isBoss?'uppercase tracking-widest text-red-100':''}">${m.title}</h3><p class="text-[9px] uppercase tracking-wider text-slate-500 font-bold">${m.subtitle}</p></div></div>
+                                <div class="text-[10px] font-mono text-slate-500 bg-slate-950/50 px-2 py-1 rounded border border-slate-800 ${xpMet?'text-emerald-400 border-emerald-900':''}">${m.xp_req.toLocaleString()} SP</div>
+                            </div>
+                            <p class="text-xs text-slate-400 mb-3 italic border-l-2 border-slate-700 pl-3 relative z-10">${m.desc}</p>
+                            <div class="bg-black/30 rounded p-2 border border-slate-800/50 relative z-10"><div class="space-y-1">${checks}</div></div>
+                        </div>
+                    </div>
+                </div>`;
+            });
+        }
+
+        // Init
+        loadData();
+        renderAll();
+    </script>
+</body>
+</html>
