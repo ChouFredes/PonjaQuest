@@ -364,7 +364,7 @@
         setInterval(updateClock, 1000);
         updateClock();
 
-        // --- AUTOMATIC ROLLOVER LOGIC ---
+        // --- AUTOMATIC ROLLOVER LOGIC (CORREGIDA) ---
         function checkDailyRollover() {
             const today = getArgentinaDate();
             const lastDate = GAME_DATA.lastPlayedDate;
@@ -382,15 +382,25 @@
                 const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
                 if (diffDays === 1) {
-                    if (GAME_DATA.hasStudiedToday) showToast("¡Nuevo día! Racha mantenida.", "success");
-                    else handleStreakLoss(1);
+                    if (GAME_DATA.hasStudiedToday) {
+                        showToast("¡Nuevo día! Racha mantenida.", "success");
+                    } else {
+                        handleStreakLoss(1);
+                    }
                 } else {
-                    handleStreakLoss(diffDays);
+                    let daysToPenalize = diffDays;
+                    
+                    if (GAME_DATA.hasStudiedToday) {
+                        daysToPenalize = Math.max(1, diffDays - 1); 
+                    }
+                    
+                    handleStreakLoss(daysToPenalize);
                 }
 
                 GAME_DATA.hasStudiedToday = false;
                 GAME_DATA.lastPlayedDate = today;
-                saveData(); renderAll();
+                saveData();
+                renderAll();
             }
         }
 
@@ -610,3 +620,4 @@
     </script>
 </body>
 </html>
+
